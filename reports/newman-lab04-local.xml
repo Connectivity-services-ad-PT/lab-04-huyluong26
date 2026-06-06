@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="Smart Campus - Core Business API Contract (Completed)" tests="6" time="0.048">
-  <testsuite name="01_Functional / POST /alerts - Happy path" id="5d09269e-c3a8-4f9d-b297-971f57d1fc0a" timestamp="2026-06-06T12:51:43.810Z" tests="2" failures="0" errors="0" time="0.021">
-    <testcase name="Status code is 201" time="0.021" classname="01FunctionalPostAlertsHappyPath"/>
-    <testcase name="Response contains id and status" time="0.021" classname="01FunctionalPostAlertsHappyPath"/>
+<testsuites name="Smart Campus - Core Business API Contract (Completed)" tests="6" time="0.051">
+  <testsuite name="01_Functional / POST /alerts - Happy path" id="0c061cdf-c34f-4702-afb9-bc170b5b43ed" timestamp="2026-06-06T13:02:18.987Z" tests="2" failures="0" errors="0" time="0.023">
+    <testcase name="Status code is 201" time="0.023" classname="01FunctionalPostAlertsHappyPath"/>
+    <testcase name="Response contains id and status" time="0.023" classname="01FunctionalPostAlertsHappyPath"/>
   </testsuite>
-  <testsuite name="02_Auth / POST /events - Missing Token" id="958b05fa-2a77-407c-8287-1631b3107f85" timestamp="2026-06-06T12:51:43.810Z" tests="1" failures="0" errors="0" time="0.004">
-    <testcase name="Missing token returns 401 Unauthorized" time="0.004" classname="02AuthPostEventsMissingToken"/>
+  <testsuite name="02_Auth / POST /events - Missing Token" id="f12e7023-6981-485d-bde7-215be231ae35" timestamp="2026-06-06T13:02:18.987Z" tests="1" failures="0" errors="0" time="0.005">
+    <testcase name="Missing token returns 401 Unauthorized" time="0.005" classname="02AuthPostEventsMissingToken"/>
   </testsuite>
-  <testsuite name="03_Negative / POST /events - Invalid Payload" id="70b81b77-1065-468c-8bc9-924d04bb0dc0" timestamp="2026-06-06T12:51:43.810Z" tests="2" failures="0" errors="0" time="0.006">
-    <testcase name="Invalid payload returns 400 or 422" time="0.006" classname="03NegativePostEventsInvalidPayload"/>
-    <testcase name="Error follows ProblemDetails" time="0.006" classname="03NegativePostEventsInvalidPayload"/>
+  <testsuite name="03_Negative / POST /events - Invalid Payload" id="c111c563-de36-4ead-bc31-cdf87709da67" timestamp="2026-06-06T13:02:18.987Z" tests="2" failures="0" errors="0" time="0.005">
+    <testcase name="Invalid payload returns 400 or 422" time="0.005" classname="03NegativePostEventsInvalidPayload"/>
+    <testcase name="Error follows ProblemDetails" time="0.005" classname="03NegativePostEventsInvalidPayload"/>
   </testsuite>
-  <testsuite name="04_Boundary_Reliability / GET /alerts/recent - Limit Above Max" id="13721f7d-137a-4b7b-8489-c1a4cbf74100" timestamp="2026-06-06T12:51:43.810Z" tests="1" failures="0" errors="0" time="0.007">
+  <testsuite name="04_Boundary_Reliability / GET /alerts/recent - Limit Above Max" id="1663f60e-6018-4b53-ad59-86f65bfd0243" timestamp="2026-06-06T13:02:18.987Z" tests="1" failures="0" errors="0" time="0.007">
     <testcase name="Limit above max returns 400 or 422" time="0.007" classname="04BoundaryReliabilityGetAlertsRecentLimitAboveMax"/>
   </testsuite>
-  <testsuite name="05_Consumer_side_Smoke / POST /vision/face-match - Call AI Vision" id="d72e07a8-4a24-4d52-bedf-01378a9b7a8c" timestamp="2026-06-06T12:51:43.810Z" tests="2" failures="0" errors="0" time="0.006">
+  <testsuite name="05_Consumer_side_Smoke / POST /vision/face-match - Call AI Vision" id="7ce1862a-6261-49cb-83bd-75c0599b78ca" timestamp="2026-06-06T13:02:18.987Z" tests="2" failures="0" errors="0" time="0.006">
     <testcase name="Face match mock returns 201 Created" time="0.006" classname="05ConsumerSideSmokePostVisionFaceMatchCallAiVision"/>
     <testcase name="Response has detection results" time="0.006" classname="05ConsumerSideSmokePostVisionFaceMatchCallAiVision"/>
   </testsuite>
-  <testsuite name="06_Local_only_NonFunctional / GET /health - Latency Test" id="1cbac5b5-bb9e-4066-ad5c-4de43e56c613" timestamp="2026-06-06T12:51:43.810Z" tests="1" failures="0" errors="0" time="0.004">
-    <testcase name="Local service responds under 1000ms" time="0.004" classname="06LocalOnlyNonFunctionalGetHealthLatencyTest"/>
+  <testsuite name="06_Local_only_NonFunctional / GET /health - Latency Test" id="82b09a79-fd09-4500-bc74-e5c607a88c4c" timestamp="2026-06-06T13:02:18.987Z" tests="1" failures="0" errors="0" time="0.005">
+    <testcase name="Local service responds under 1000ms" time="0.005" classname="06LocalOnlyNonFunctionalGetHealthLatencyTest"/>
   </testsuite>
 </testsuites>

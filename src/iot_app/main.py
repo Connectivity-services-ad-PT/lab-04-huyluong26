@@ -200,6 +200,11 @@ def health() -> HealthStatus:
     return HealthStatus(service=SERVICE_NAME, time=now_iso())
 
 
+@app.head("/health")
+def health_head() -> Response:
+    return Response(status_code=status.HTTP_200_OK)
+
+
 @app.post(
     "/alerts",
     response_model=Alert,
