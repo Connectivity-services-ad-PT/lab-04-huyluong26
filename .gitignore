@@ -11,3 +11,5 @@ reports/*.xml
 reports/*.html
 reports/*.json
 !reports/.gitkeep
+!reports/newman-lab04-local.xml
+!reports/newman-lab04-local.html

@@ -1,265 +1,309 @@
 import os
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Literal, Optional, Union
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import AnyUrl, BaseModel, Field
 
 
-SERVICE_NAME = os.getenv("SERVICE_NAME", "iot-ingestion")
-SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.4.0")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "team-core")
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "local-dev-token")
 
 
 app = FastAPI(
-    title="FIT4110 Lab 04 - IoT Ingestion Service",
+    title="FIT4110 Lab 04 - Core Business Service",
     version=SERVICE_VERSION,
-    description=(
-        "Dockerized IoT Ingestion API aligned with the Lab 03 OpenAPI/Postman contract."
-    ),
+    description="Dockerized Core Business API aligned with the Lab 03 team-core contract.",
 )
 
 
-class SensorMetric(str, Enum):
-    temperature = "temperature"
-    humidity = "humidity"
-    motion = "motion"
-    smoke = "smoke"
-
-
-class SensorUnit(str, Enum):
-    celsius = "celsius"
-    percent = "percent"
-    boolean = "boolean"
-    ppm = "ppm"
-
-
-class ProblemDetails(BaseModel):
-    type: str = "about:blank"
+class Problem(BaseModel):
+    type: str = "https://campus.local/errors/validation"
     title: str
     status: int = Field(..., ge=400, le=599)
-    detail: str
+    detail: Optional[str] = None
     instance: Optional[str] = None
+    errors: List[Dict[str, str]] = []
 
 
-class HealthResponse(BaseModel):
-    status: str
+class HealthStatus(BaseModel):
+    status: Literal["ok"] = "ok"
     service: str
-    version: str
+    time: str
 
 
-class SensorReadingCreate(BaseModel):
-    device_id: str = Field(..., min_length=3, examples=["ESP32-LAB-A01"])
-    metric: SensorMetric = Field(..., examples=["temperature"])
-    value: float = Field(
-        ...,
-        ge=-40,
-        le=80,
-        description="Boundary range used in Lab 03 and Lab 04: -40 to 80.",
-        examples=[31.5],
-    )
-    unit: Optional[SensorUnit] = Field(default=None, examples=["celsius"])
-    timestamp: str = Field(..., examples=["2026-05-13T08:30:00+07:00"])
+class CreateAlertRequest(BaseModel):
+    sourceService: str = Field(..., min_length=2, max_length=80, pattern=r"^[a-z0-9-]+$")
+    alertType: Literal[
+        "UNAUTHORIZED_ACCESS",
+        "SENSOR_THRESHOLD_EXCEEDED",
+        "UNKNOWN_PERSON",
+        "SYSTEM_ERROR",
+    ]
+    severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    message: str = Field(..., min_length=5, max_length=500)
+    relatedEventId: Optional[str] = None
 
 
-class SensorReading(BaseModel):
-    reading_id: str
-    device_id: str
-    metric: SensorMetric
-    value: float
-    unit: Optional[SensorUnit] = None
+class Alert(CreateAlertRequest):
+    id: str
+    status: Literal["OPEN", "ACKNOWLEDGED", "RESOLVED"] = "OPEN"
+    createdAt: str
+    resolvedAt: Optional[str] = None
+
+
+class SensorEvent(BaseModel):
+    eventType: Literal["SENSOR_READING"]
+    eventId: str
+    deviceId: str = Field(..., pattern=r"^SENSOR-[0-9]{3}$")
+    metric: Literal["temperature", "humidity", "smoke", "motion"]
+    value: float = Field(..., ge=-100, le=1000)
+    unit: str = Field(..., min_length=1, max_length=20)
     timestamp: str
-    created_at: str
 
 
-class SensorReadingCreated(BaseModel):
-    reading_id: str
-    device_id: str
-    metric: SensorMetric
-    accepted: bool
-    created_at: str
+class AccessEvent(BaseModel):
+    eventType: Literal["ACCESS_CHECK"]
+    eventId: str
+    gateId: str = Field(..., pattern=r"^GATE-[0-9]{2}$")
+    cardId: str = Field(..., pattern=r"^RFID-[0-9]{4}-[0-9]{3}$")
+    decision: Literal["ALLOW", "DENY"]
+    timestamp: str
 
 
-READINGS: List[Dict] = []
+class EventAccepted(BaseModel):
+    eventId: str
+    acceptedAt: str
 
 
-def build_problem(
-    *,
-    status_code: int,
-    title: str,
-    detail: str,
-    instance: Optional[str] = None,
-    problem_type: str = "about:blank",
-) -> Dict:
-    problem = {
-        "type": problem_type,
-        "title": title,
-        "status": status_code,
-        "detail": detail,
-    }
-    if instance:
-        problem["instance"] = instance
-    return problem
+class AccessCheckRequest(BaseModel):
+    cardId: str = Field(..., pattern=r"^RFID-[0-9]{4}-[0-9]{3}$")
+    gateId: str = Field(..., pattern=r"^GATE-[0-9]{2}$")
+    timestamp: str
+    faceMatched: Optional[bool] = None
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    if isinstance(exc.detail, dict):
-        problem = exc.detail
-    else:
-        problem = build_problem(
-            status_code=exc.status_code,
-            title=status.HTTP_STATUS_CODES.get(exc.status_code, "HTTP Error"),
-            detail=str(exc.detail),
-            instance=str(request.url.path),
-        )
-
-    problem.setdefault("status", exc.status_code)
-    problem.setdefault("title", status.HTTP_STATUS_CODES.get(exc.status_code, "HTTP Error"))
-    problem.setdefault("type", "about:blank")
-    problem.setdefault("detail", "Request failed")
-    problem.setdefault("instance", str(request.url.path))
-
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=problem,
-        media_type="application/problem+json",
-        headers=getattr(exc, "headers", None),
-    )
+class AccessCheckResponse(BaseModel):
+    decision: Literal["ALLOW", "DENY"]
+    expiresAt: str
+    reasonCode: str
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-) -> JSONResponse:
-    first_error = exc.errors()[0] if exc.errors() else {}
-    location = ".".join(str(item) for item in first_error.get("loc", []))
-    message = first_error.get("msg", "Request validation error")
-    detail = f"{location}: {message}" if location else message
-
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=build_problem(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            title="Validation error",
-            detail=detail,
-            instance=str(request.url.path),
-            problem_type="https://smart-campus.local/problems/validation-error",
-        ),
-        media_type="application/problem+json",
-    )
+class FaceMatchRequest(BaseModel):
+    imageRef: AnyUrl
+    requestId: str
+    cameraId: str
+    timestamp: str
 
 
-def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> None:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=build_problem(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                title="Unauthorized",
-                detail="Missing Authorization header",
-                problem_type="https://smart-campus.local/problems/unauthorized",
-            ),
-        )
+class FaceMatchResponse(BaseModel):
+    detectionId: str
+    detectionType: Literal["FACE"] = "FACE"
+    faceMatched: bool
+    isLive: bool
+    confidence: float
+    status: Literal["success", "low_confidence", "no_face_detected"]
+    matchedPersonId: Optional[str] = None
 
-    expected = f"Bearer {AUTH_TOKEN}"
-    if authorization != expected:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=build_problem(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                title="Unauthorized",
-                detail="Invalid bearer token",
-                problem_type="https://smart-campus.local/problems/unauthorized",
-            ),
-        )
+
+ALERTS: List[Alert] = []
+EVENTS: Dict[str, Union[SensorEvent, AccessEvent]] = {}
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def next_reading_id() -> str:
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    return f"R-{today}-{len(READINGS) + 1:04d}"
+def problem_response(
+    *,
+    status_code: int,
+    title: str,
+    detail: str,
+    instance: str,
+    problem_type: str = "https://campus.local/errors/validation",
+    errors: Optional[List[Dict[str, str]]] = None,
+) -> Dict:
+    return {
+        "type": problem_type,
+        "title": title,
+        "status": status_code,
+        "detail": detail,
+        "instance": instance,
+        "errors": errors or [],
+    }
 
 
-@app.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    return HealthResponse(
-        status="ok",
-        service=SERVICE_NAME,
-        version=SERVICE_VERSION,
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    content = exc.detail if isinstance(exc.detail, dict) else problem_response(
+        status_code=exc.status_code,
+        title=status.HTTP_STATUS_CODES.get(exc.status_code, "HTTP Error"),
+        detail=str(exc.detail),
+        instance=str(request.url.path),
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+        media_type="application/problem+json",
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    errors = []
+    for item in exc.errors():
+        field = ".".join(str(part) for part in item.get("loc", []))
+        errors.append(
+            {
+                "field": field,
+                "code": item.get("type", "validation_error"),
+                "message": item.get("msg", "Invalid value"),
+            }
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=problem_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            title="Du lieu khong hop le",
+            detail="Payload hoac tham so request khong dung contract",
+            instance=str(request.url.path),
+            errors=errors,
+        ),
+        media_type="application/problem+json",
+    )
+
+
+def verify_bearer_token(authorization: Optional[str] = Header(default=None)) -> None:
+    if authorization != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=problem_response(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                title="Chua xac thuc",
+                detail="Thieu hoac sai Bearer token",
+                instance="/",
+                problem_type="https://campus.local/errors/unauthorized",
+            ),
+        )
+
+
+@app.get("/health", response_model=HealthStatus)
+def health() -> HealthStatus:
+    return HealthStatus(service=SERVICE_NAME, time=now_iso())
+
+
+@app.post(
+    "/alerts",
+    response_model=Alert,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(verify_bearer_token)],
+    responses={400: {"model": Problem}, 401: {"model": Problem}, 422: {"model": Problem}},
+)
+def create_alert(payload: CreateAlertRequest, response: Response) -> Alert:
+    alert = Alert(
+        **payload.model_dump(),
+        id=str(uuid4()),
+        status="OPEN",
+        createdAt=now_iso(),
+        resolvedAt=None,
+    )
+    ALERTS.append(alert)
+    response.headers["Location"] = f"/alerts/{alert.id}"
+    return alert
+
+
+@app.get("/alerts", dependencies=[Depends(verify_bearer_token)])
+def list_alerts(
+    cursor: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> Dict:
+    return {"items": ALERTS[:limit], "nextCursor": None, "hasMore": False}
+
+
+@app.get("/alerts/recent", dependencies=[Depends(verify_bearer_token)])
+def recent_alerts(limit: int = Query(default=20, ge=1, le=100)) -> Dict[str, List[Alert]]:
+    return {"items": ALERTS[-limit:]}
+
+
+@app.get("/alerts/{alert_id}", dependencies=[Depends(verify_bearer_token)])
+def get_alert(alert_id: str) -> Alert:
+    for alert in ALERTS:
+        if alert.id == alert_id:
+            return alert
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Khong tim thay",
+            detail=f"Alert {alert_id} khong ton tai",
+            instance=f"/alerts/{alert_id}",
+            problem_type="https://campus.local/errors/not-found",
+        ),
     )
 
 
 @app.post(
-    "/readings",
-    response_model=SensorReadingCreated,
+    "/events",
+    response_model=EventAccepted,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(verify_bearer_token)],
-    responses={
-        401: {"model": ProblemDetails},
-        422: {"model": ProblemDetails},
-        429: {"model": ProblemDetails},
-    },
 )
-def create_reading(payload: SensorReadingCreate, response: Response) -> SensorReadingCreated:
-    if payload.metric == SensorMetric.temperature and payload.value >= 70:
-        response.headers["X-Warning"] = "high-temperature"
+def create_event(payload: Union[SensorEvent, AccessEvent]) -> EventAccepted:
+    if payload.eventId in EVENTS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=problem_response(
+                status_code=status.HTTP_409_CONFLICT,
+                title="Xung dot",
+                detail="eventId da ton tai",
+                instance="/events",
+                problem_type="https://campus.local/errors/conflict",
+            ),
+        )
 
-    reading_id = next_reading_id()
-    created_at = now_iso()
+    EVENTS[payload.eventId] = payload
+    return EventAccepted(eventId=payload.eventId, acceptedAt=now_iso())
 
-    item = {
-        "reading_id": reading_id,
-        "device_id": payload.device_id,
-        "metric": payload.metric.value,
-        "value": payload.value,
-        "unit": payload.unit.value if payload.unit else None,
-        "timestamp": payload.timestamp,
-        "created_at": created_at,
-    }
-    READINGS.append(item)
 
-    return SensorReadingCreated(
-        reading_id=reading_id,
-        device_id=payload.device_id,
-        metric=payload.metric,
-        accepted=True,
-        created_at=created_at,
+@app.post(
+    "/access/check",
+    response_model=AccessCheckResponse,
+    dependencies=[Depends(verify_bearer_token)],
+)
+def check_access(
+    payload: AccessCheckRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> AccessCheckResponse:
+    allowed = payload.cardId.endswith("001") and (payload.faceMatched is not False)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+    return AccessCheckResponse(
+        decision="ALLOW" if allowed else "DENY",
+        expiresAt=expires_at.isoformat(timespec="seconds"),
+        reasonCode="AUTHORIZED_CARD" if allowed else "ACCESS_DENIED",
     )
 
 
-@app.get("/readings/latest", dependencies=[Depends(verify_bearer_token)])
-def latest_readings(
-    device_id: Optional[str] = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=100),
-) -> Dict[str, List[Dict]]:
-    items = READINGS
-
-    if device_id:
-        items = [item for item in items if item["device_id"] == device_id]
-
-    return {"items": items[-limit:]}
-
-
-@app.get("/readings/{reading_id}", dependencies=[Depends(verify_bearer_token)])
-def get_reading(reading_id: str) -> Dict:
-    for item in READINGS:
-        if item["reading_id"] == reading_id:
-            return item
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=build_problem(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Not Found",
-            detail=f"Reading {reading_id} does not exist",
-            instance=f"/readings/{reading_id}",
-            problem_type="https://smart-campus.local/problems/not-found",
-        ),
+@app.post(
+    "/vision/face-match",
+    response_model=FaceMatchResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(verify_bearer_token)],
+)
+def request_face_match(payload: FaceMatchRequest) -> FaceMatchResponse:
+    return FaceMatchResponse(
+        detectionId=str(uuid4()),
+        faceMatched=True,
+        isLive=True,
+        confidence=0.92,
+        status="success",
+        matchedPersonId="PERSON-1234",
     )
